@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Windows release
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches application version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -notmatch '^v(?<version>\d+\.\d+\.\d+)$') {
+            throw "Release tags must use vMAJOR.MINOR.PATCH, received '$tag'."
+          }
+
+          $tagVersion = $Matches.version
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargoVersion = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+
+          $versions = @{
+            "package.json" = $packageVersion
+            "src-tauri/tauri.conf.json" = $tauriVersion
+            "src-tauri/Cargo.toml" = $cargoVersion
+          }
+
+          $mismatches = $versions.GetEnumerator() | Where-Object { $_.Value -ne $tagVersion }
+          if ($mismatches) {
+            $details = ($mismatches | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ", "
+            throw "Tag $tag requires version $tagVersion, but found: $details"
+          }
+
+          "RELEASE_VERSION=$tagVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build files
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend checks
+        run: |
+          npm run lint
+          npm run test -- --run
+          npm run build
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build and publish GitHub Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: TickerDock ${{ github.ref_name }}
+          releaseBody: |
+            ## TickerDock ${{ github.ref_name }}
+
+            Automated Windows build published from tag `${{ github.ref_name }}`.
+
+            ### Included
+
+            - A-share, sector, and US stock monitoring
+            - Full and compact desktop views
+            - Windows installer assets built by Tauri
+
+            Market data may be delayed and is not investment advice.
+          releaseDraft: false
+          prerelease: false
