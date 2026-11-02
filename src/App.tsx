@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { LogicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
@@ -57,6 +57,18 @@ const MODE_LABELS: Array<{ value: MarketMode; label: string }> = [
 
 function windowAction(action: () => Promise<void>) {
   void action().catch(() => undefined)
+}
+
+function handleCompactDragStart(event: MouseEvent<HTMLDivElement>) {
+  if (event.button !== 0) return
+
+  const target = event.target
+  if (target instanceof Element && target.closest('button, a, input, textarea, select')) {
+    return
+  }
+
+  event.preventDefault()
+  windowAction(() => getCurrentWindow().startDragging())
 }
 
 function stepIndex(current: number, length: number, step: number) {
@@ -576,11 +588,11 @@ function App() {
         onMouseLeave={() => setHovered(false)}
       >
         {compact ? (
-          <div className="compact-row" data-tauri-drag-region>
-            <span className="compact-name" title={compactName} data-tauri-drag-region>
+          <div className="compact-row" onMouseDown={handleCompactDragStart}>
+            <span className="compact-name" title={compactName}>
               {compactName}
             </span>
-            <span className="compact-trend" data-tauri-drag-region>
+            <span className="compact-trend">
               {compactTrend && activeIntraday ? (
                 <Sparkline
                   points={activeIntraday.points}
@@ -592,7 +604,6 @@ function App() {
             <span
               className={`compact-change ${compactDirection}`}
               title={headerTitle}
-              data-tauri-drag-region
             >
               {compactChange}
             </span>

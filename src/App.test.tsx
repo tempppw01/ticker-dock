@@ -13,6 +13,7 @@ const windowMock = vi.hoisted(() => ({
   setAlwaysOnTop: vi.fn(async () => undefined),
   minimize: vi.fn(async () => undefined),
   close: vi.fn(async () => undefined),
+  startDragging: vi.fn(async () => undefined),
 }))
 
 const marketQuotes = vi.hoisted(() => ({
@@ -108,6 +109,19 @@ describe('App', () => {
     expect(window.localStorage.getItem(VIEW_STORAGE_KEY)).toBe('full')
     expect(screen.getByRole('tab', { name: '自动' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '展开完整视图' })).not.toBeInTheDocument()
+  })
+
+  it('starts dragging from the compact pill without hijacking its action button', async () => {
+    window.localStorage.setItem(VIEW_STORAGE_KEY, 'compact')
+    render(<App />)
+
+    fireEvent.mouseDown(await screen.findByText('上证指数'), { button: 0 })
+
+    expect(windowMock.startDragging).toHaveBeenCalledTimes(1)
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: '展开完整视图' }), { button: 0 })
+
+    expect(windowMock.startDragging).toHaveBeenCalledTimes(1)
   })
 
   it('starts with A shares during the A-share session and can switch to US stocks', async () => {
